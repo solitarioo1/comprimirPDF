@@ -47,3 +47,6 @@ tmp/
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+
+#ignorar archivos comprimidos
+*.zip
