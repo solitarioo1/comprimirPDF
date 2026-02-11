@@ -3,16 +3,23 @@ import zipfile
 import tempfile
 import shutil
 from pathlib import Path
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, send_file, jsonify
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
 import PyPDF2
 from PIL import Image
 import io
 import img2pdf
 
+# Cargar variables de entorno desde .env
+load_dotenv()
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
+csrf = CSRFProtect(app)
 
 ALLOWED_EXTENSIONS = {'zip'}
 
@@ -107,9 +114,14 @@ def process_zip(input_zip_path, output_zip_path):
                     total_pdfs += 1
                     input_pdf = os.path.join(root, file)
                     
-                    # Calcular ruta relativa
-                    rel_path = os.path.relpath(input_pdf, temp_extract)
-                    output_pdf = os.path.join(temp_compress, rel_path)
+                    # Validar ruta para prevenir path traversal
+                    try:
+                        rel_path = sanitize_path(os.path.relpath(input_pdf, temp_extract))
+                    except ValueError as e:
+                        print(f"Path rechazado: {input_pdf}")
+                        continue
+                    
+                    output_pdf = os.path.join(temp_compress, str(rel_path))
                     
                     # Crear directorio si no existe
                     os.makedirs(os.path.dirname(output_pdf), exist_ok=True)
@@ -120,8 +132,15 @@ def process_zip(input_zip_path, output_zip_path):
                 else:
                     # Copiar archivos no-PDF
                     input_file = os.path.join(root, file)
-                    rel_path = os.path.relpath(input_file, temp_extract)
-                    output_file = os.path.join(temp_compress, rel_path)
+                    
+                    # Validar ruta para prevenir path traversal
+                    try:
+                        rel_path = sanitize_path(os.path.relpath(input_file, temp_extract))
+                    except ValueError as e:
+                        print(f"Path rechazado: {input_file}")
+                        continue
+                    
+                    output_file = os.path.join(temp_compress, str(rel_path))
                     os.makedirs(os.path.dirname(output_file), exist_ok=True)
                     shutil.copy2(input_file, output_file)
         
@@ -146,7 +165,7 @@ def process_zip(input_zip_path, output_zip_path):
 
 @app.route('/')
 def index():
-    return render_template('templates/index.html')
+    return render_template('index.html')
 
 @app.route('/compress', methods=['POST'])
 def compress():

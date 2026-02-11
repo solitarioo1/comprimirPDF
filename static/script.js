@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
+        
+        // Obtener token CSRF del meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         // Mostrar progreso
         btnCompress.disabled = true;
@@ -90,6 +93,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Enviar petición
         fetch('/compress', {
             method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
             body: formData
         })
         .then(response => {
