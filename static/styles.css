@@ -100,6 +100,59 @@ main {
     font-weight: 600;
 }
 
+.compression-level {
+    margin: 30px 0;
+    padding: 20px;
+    background: var(--gris-claro);
+    border-radius: 6px;
+}
+
+.compression-level label {
+    display: block;
+    color: var(--gris-oscuro);
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+.radio-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: var(--blanco);
+    border: 2px solid var(--gris-medio);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.radio-label:hover {
+    border-color: var(--naranja);
+}
+
+.radio-label input[type="radio"] {
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"]:checked + span {
+    color: var(--naranja);
+    font-weight: 600;
+}
+
+.radio-label input[type="radio"]:checked {
+    accent-color: var(--naranja);
+}
+
+.radio-label span {
+    color: var(--gris-oscuro);
+}
+
 .btn-compress {
     width: 100%;
     padding: 18px 40px;

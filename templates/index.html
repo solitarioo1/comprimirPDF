@@ -30,6 +30,24 @@
                         </label>
                     </div>
 
+                    <div class="compression-level">
+                        <label>Nivel de compresión:</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="compression" value="low" checked>
+                                <span>Bajo (mejor calidad)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="compression" value="medium">
+                                <span>Medio (balance)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="compression" value="high">
+                                <span>Agresivo (máxima compresión)</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn-compress" id="btnCompress">
                         Comprimir PDFs
                     </button>

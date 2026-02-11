@@ -72,6 +72,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         
+        // Obtener nivel de compresión seleccionado
+        const compressionLevel = document.querySelector('input[name="compression"]:checked').value;
+        formData.append('compression', compressionLevel);
+        
         // Obtener token CSRF del meta tag
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
