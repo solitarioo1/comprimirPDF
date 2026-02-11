@@ -2,12 +2,12 @@ import os
 import zipfile
 import tempfile
 import shutil
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, send_file, jsonify
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
-import pdfrw
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -31,22 +31,50 @@ def sanitize_path(path):
     return path
 
 def compress_pdf(input_path, output_path):
-    """Comprime un PDF usando Ghostscript si está disponible, sino pdfrw"""
+    """Comprime un PDF usando Ghostscript"""
     try:
-        # Intentar con Ghostscript primero (mejor compresión)
-        cmd = f'gs -sDEVICE=pdfwrite -dCompressPDFStreams=true -dDetectDuplicateImages -dCompressFonts=true -dDownsampleColorImages=true -dColorImageResolution=150 -dGrayImageResolution=150 -dMonoImageResolution=200 -dQUIET -dNOPAUSE -dBATCH -sOutputFile="{output_path}" "{input_path}"'
-        result = os.system(cmd)
+        # Comando Ghostscript
+        cmd = [
+            'gs',
+            '-sDEVICE=pdfwrite',
+            '-dCompressPDFStreams=true',
+            '-dDetectDuplicateImages',
+            '-dCompressFonts=true',
+            '-dDownsampleColorImages=true',
+            '-dColorImageResolution=150',
+            '-dGrayImageResolution=150',
+            '-dMonoImageResolution=200',
+            '-dQUIET',
+            '-dNOPAUSE',
+            '-dBATCH',
+            f'-sOutputFile={output_path}',
+            input_path
+        ]
         
-        if result == 0:
-            return True
-    except:
-        pass
-    
-    # Si Ghostscript falla, usar pdfrw
-    try:
-        template = pdfrw.PdfReader(input_path)
-        pdfrw.PdfWriter().write(output_path, template)
-        return True
+        # Ejecutar con subprocess para mejor control
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0 and os.path.exists(output_path):
+            output_size = os.path.getsize(output_path)
+            input_size = os.path.getsize(input_path)
+            
+            # Si se comprimió, retornar True
+            if output_size < input_size:
+                return True
+            # Si no se redujo, dejar el original
+            else:
+                shutil.copy2(input_path, output_path)
+                return False
+        else:
+            # Si hay error, copiar original
+            print(f"Ghostscript error: {result.stderr}")
+            shutil.copy2(input_path, output_path)
+            return False
+        
+    except FileNotFoundError:
+        print("Ghostscript no instalado")
+        shutil.copy2(input_path, output_path)
+        return False
     except Exception as e:
         print(f"Error comprimiendo {input_path}: {str(e)}")
         shutil.copy2(input_path, output_path)
