@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compresor de PDFs - La Positiva</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Compresor de PDFs</h1>
+            <p class="subtitle">Comprime múltiples PDFs manteniendo su estructura</p>
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="fileInput" name="file" accept=".zip" required>
+                        <label for="fileInput" class="file-label">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <span class="file-text">Seleccionar archivo ZIP</span>
+                            <span class="file-name"></span>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn-compress" id="btnCompress">
+                        Comprimir PDFs
+                    </button>
+                </form>
+
+                <div id="progress" class="progress hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <p class="progress-text">Procesando archivo...</p>
+                </div>
+
+                <div id="result" class="result hidden"></div>
+            </div>
+
+            <div class="info-section">
+                <h2>¿Cómo funciona?</h2>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Sube tu archivo ZIP</h3>
+                            <p>Selecciona un archivo ZIP que contenga tus PDFs organizados en carpetas</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Compresión inteligente</h3>
+                            <p>Cada PDF se comprime según su tamaño, optimizando el resultado</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Descarga tu archivo</h3>
+                            <p>Recibe un ZIP con la misma estructura, nombres y PDFs optimizados</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notes">
+                    <h3>Notas importantes:</h3>
+                    <ul>
+                        <li>Tamaño máximo: 500MB</li>
+                        <li>Solo archivos ZIP permitidos</li>
+                        <li>La estructura de carpetas se mantiene intacta</li>
+                        <li>Compresión adaptativa según tamaño del PDF</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Compresor de PDFs &copy; 2026</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
