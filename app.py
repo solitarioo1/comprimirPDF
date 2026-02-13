@@ -237,7 +237,6 @@ def compress():
         print("\n" + "="*50)
         print("🔍 DATOS RECIBIDOS DEL CLIENTE:")
         print(f"  Archivo: {file.filename}")
-        print(f"  Tamaño archivo: {len(file.stream.getvalue())} bytes")
         print(f"  Form keys: {list(request.form.keys())}")
         print(f"  Compression (bruto): {repr(compression_level)}")
         print(f"  Compression (tipo): {type(compression_level)}")
