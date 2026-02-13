@@ -50,54 +50,46 @@ def sanitize_path(path):
 def get_ghostscript_params(compression_level, output_path, input_path):
     """Retorna parámetros de Ghostscript según nivel de compresión"""
     print(f"⚙️ DEBUG get_ghostscript_params: compression_level = '{compression_level}'")
+    
+    # Parámetros base - ORDEN IMPORTA
     base_params = [
         'gs',
         '-sDEVICE=pdfwrite',
-        '-dCompressPDFStreams=true',
-        '-dDetectDuplicateImages',
-        '-dCompressFonts=true',
-        '-dDownsampleColorImages=true',
-        '-dDownsampleGrayImages=true',
-        '-dQUIET',
         '-dNOPAUSE',
         '-dBATCH',
-        f'-sOutputFile={output_path}',
-        input_path
+        '-dQUIET',
+        f'-sOutputFile={output_path}'
     ]
     
-    # Ajustar según nivel
+    # Ajustar según nivel - SOLO -dPDFSETTINGS es más efectivo
     if compression_level == 'low':
-        # Baja compresión - máxima calidad
-        print("🎨 DEBUG: Aplicando parámetros LOW (300 DPI)")
+        # Baja compresión - máxima calidad (sin compresión)
+        print("🎨 DEBUG: Aplicando parámetros LOW (sin compresión - máxima calidad)")
         base_params.extend([
             '-dPDFSETTINGS=/prepress',
-            '-dColorImageResolution=300',
-            '-dGrayImageResolution=300',
-            '-dMonoImageResolution=300',
-            '-r300x300'
+            '-dCompressLevel=0'
         ])
     elif compression_level == 'medium':
         # Media compresión - balance
-        print("⚖️ DEBUG: Aplicando parámetros MEDIUM (150 DPI)")
+        print("⚖️ DEBUG: Aplicando parámetros MEDIUM (balance)")
         base_params.extend([
             '-dPDFSETTINGS=/screen',
-            '-dColorImageResolution=150',
-            '-dGrayImageResolution=150',
-            '-dMonoImageResolution=150',
-            '-r150x150'
+            '-dCompressLevel=5'
         ])
-    else:  # high/agresivo
+    else:  # high
         # Alta compresión - máxima reducción
-        print("⚡ DEBUG: Aplicando parámetros HIGH (100 DPI)")
+        print("⚡ DEBUG: Aplicando parámetros HIGH (máxima compresión)")
         base_params.extend([
             '-dPDFSETTINGS=/ebook',
-            '-dColorImageResolution=100',
-            '-dGrayImageResolution=100',
-            '-dMonoImageResolution=100',
-            '-r100x100',
-            '-dEncodeColorImages=true',
-            '-dEncodeGrayImages=true'
+            '-dCompressLevel=9',
+            '-dJPXDecodeMaxMemoryMB=500', 
+            '-dDetectDuplicateImages',
+            '-dCompressFonts=true',
+            '-r100x100'
         ])
+    
+    # El input va al final
+    base_params.append(input_path)
     
     return base_params
 
