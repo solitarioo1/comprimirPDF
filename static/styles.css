@@ -125,10 +125,10 @@ main {
 .radio-label {
     display: flex;
     align-items: flex-start;
-    padding: 15px;
+    padding: 20px;
     background: var(--blanco);
-    border: 2px solid #ddd;
-    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
@@ -136,36 +136,24 @@ main {
 
 .radio-label:hover {
     border-color: var(--naranja);
-    box-shadow: 0 2px 8px rgba(255, 109, 70, 0.1);
+    box-shadow: 0 4px 12px rgba(255, 109, 70, 0.15);
+    background: #fafafa;
 }
 
 .radio-label input[type="radio"] {
     margin-right: 12px;
     margin-top: 2px;
     cursor: pointer;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     accent-color: var(--naranja);
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    border: 2.5px solid #ddd;
-    border-radius: 50%;
-    padding: 3px;
-    background: white;
-    transition: all 0.3s ease;
     flex-shrink: 0;
+    outline: none;
+    border: none;
 }
 
-.radio-label input[type="radio"]:hover {
-    border-color: var(--naranja);
-    box-shadow: 0 0 8px rgba(255, 109, 70, 0.4);
-}
-
-.radio-label input[type="radio"]:checked {
-    border-color: var(--naranja);
-    background: radial-gradient(circle, var(--naranja) 35%, white 35%);
-    box-shadow: 0 0 12px rgba(255, 109, 70, 0.5);
+.radio-label input[type="radio"]:focus {
+    outline: none;
 }
 
 .radio-label input[type="radio"]:checked {

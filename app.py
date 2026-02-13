@@ -232,14 +232,24 @@ def compress():
     try:
         # Obtener nivel de compresión del formulario
         compression_level = request.form.get('compression', 'medium')
-        print(f"🔧 DEBUG: Nivel de compresión recibido: '{compression_level}'")
+        
+        # DEBUG DETALLADO
+        print("\n" + "="*50)
+        print("🔍 DATOS RECIBIDOS DEL CLIENTE:")
+        print(f"  Archivo: {file.filename}")
+        print(f"  Tamaño archivo: {len(file.stream.getvalue())} bytes")
+        print(f"  Form keys: {list(request.form.keys())}")
+        print(f"  Compression (bruto): {repr(compression_level)}")
+        print(f"  Compression (tipo): {type(compression_level)}")
+        print(f"  Compression (longitud): {len(compression_level)}")
+        print("="*50 + "\n")
         
         # Validar que sea un nivel válido
         if compression_level not in ['low', 'medium', 'high']:
             print(f"⚠️ DEBUG: Nivel inválido '{compression_level}', usando 'medium' por defecto")
             compression_level = 'medium'
         
-        print(f"✅ DEBUG: Usando nivel de compresión: '{compression_level}'")
+        print(f"✅ DEBUG: Usando nivel de compresión FINAL: '{compression_level}'")
         
         # Sanitizar nombre
         filename = secure_filename(file.filename)
@@ -279,6 +289,79 @@ def compress():
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({'error': 'Archivo demasiado grande (máx 500MB)'}), 413
+
+@app.route('/test-compression', methods=['GET'])
+def test_compression_endpoint():
+    """Endpoint de prueba para verificar que los parámetros funcionan"""
+    test_dir = tempfile.mkdtemp()
+    
+    try:
+        # Crear un PDF de test simple
+        test_pdf = os.path.join(test_dir, "test.pdf")
+        # Usar un PDF mínimo
+        with open(test_pdf, 'wb') as f:
+            f.write(b"""%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 44 >>
+stream
+BT
+/F1 12 Tf
+100 700 Td
+(Test PDF) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000244 00000 n 
+0000000333 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+427
+%%EOF""")
+        
+        results = {}
+        
+        # Probar los 3 niveles
+        for level in ['low', 'medium', 'high']:
+            output = os.path.join(test_dir, f"test_{level}.pdf")
+            compress_pdf(test_pdf, output, level)
+            
+            if os.path.exists(output):
+                original_size = os.path.getsize(test_pdf)
+                compressed_size = os.path.getsize(output)
+                ratio = (compressed_size / original_size) * 100
+                results[level] = {
+                    'original': original_size,
+                    'compressed': compressed_size,
+                    'ratio': f"{ratio:.1f}%"
+                }
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'message': 'Prueba completada. Si los tamaños son diferentes, Ghostscript está funcionando.'
+        })
+        
+    finally:
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
