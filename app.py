@@ -49,7 +49,6 @@ def sanitize_path(path):
 
 def get_ghostscript_params(compression_level, output_path, input_path):
     """Retorna parámetros de Ghostscript según nivel de compresión"""
-    print(f"⚙️ DEBUG get_ghostscript_params: compression_level = '{compression_level}'")
     
     # Parámetros base - ORDEN IMPORTA
     base_params = [
@@ -61,31 +60,40 @@ def get_ghostscript_params(compression_level, output_path, input_path):
         f'-sOutputFile={output_path}'
     ]
     
-    # Ajustar según nivel - SOLO -dPDFSETTINGS es más efectivo
+    # Ajustar según nivel - PROPORCIONES: BAJO 40%, MEDIO 65%, ALTO 80%
     if compression_level == 'low':
-        # Baja compresión - máxima calidad (sin compresión)
-        print("🎨 DEBUG: Aplicando parámetros LOW (sin compresión - máxima calidad)")
+        # Baja compresión - 40% (mantiene 60% tamaño)
         base_params.extend([
             '-dPDFSETTINGS=/prepress',
-            '-dCompressLevel=0'
+            '-dCompressLevel=3'
         ])
     elif compression_level == 'medium':
-        # Media compresión - balance
-        print("⚖️ DEBUG: Aplicando parámetros MEDIUM (balance)")
+        # Media compresión - 65% (mantiene 35% tamaño)
         base_params.extend([
             '-dPDFSETTINGS=/screen',
-            '-dCompressLevel=5'
+            '-dCompressLevel=7',
+            '-dColorImageResolution=150',
+            '-dGrayImageResolution=150',
+            '-dDownsampleColorImages=true',
+            '-dDownsampleGrayImages=true',
+            '-dJPEGQFactor=60'
         ])
     else:  # high
-        # Alta compresión - máxima reducción
-        print("⚡ DEBUG: Aplicando parámetros HIGH (máxima compresión)")
+        # Alta compresión - 80% (mantiene 20% tamaño)
         base_params.extend([
             '-dPDFSETTINGS=/ebook',
             '-dCompressLevel=9',
-            '-dJPXDecodeMaxMemoryMB=500', 
+            '-dColorImageResolution=72',
+            '-dGrayImageResolution=72',
+            '-dMonoImageResolution=72',
+            '-dDownsampleColorImages=true',
+            '-dDownsampleGrayImages=true',
+            '-dDownsampleMonoImages=true',
+            '-dColorImageDownsampleType=/Bicubic',
+            '-dGrayImageDownsampleType=/Bicubic',
             '-dDetectDuplicateImages',
             '-dCompressFonts=true',
-            '-r100x100'
+            '-dJPEGQFactor=40'
         ])
     
     # El input va al final
@@ -99,11 +107,6 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
         # Obtener parámetros según nivel
         cmd = get_ghostscript_params(compression_level, output_path, input_path)
         
-        print(f"🚀 DEBUG: Ejecutando comando Ghostscript")
-        print(f"   Input: {input_path}")
-        print(f"   Output: {output_path}")
-        print(f"   Nivel: {compression_level}")
-        
         # Ejecutar con subprocess
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         
@@ -111,10 +114,10 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
             input_size = os.path.getsize(input_path)
             output_size = os.path.getsize(output_path)
             ratio = (output_size / input_size) * 100
-            print(f"✅ Compresión exitosa: {input_size} -> {output_size} ({ratio:.1f}%)")
+            print(f"✅ PDF comprimido: {os.path.basename(input_path)} ({ratio:.1f}%)")
             return True
         else:
-            print(f"❌ Error en Ghostscript (código {result.returncode}): {result.stderr}")
+            print(f"❌ Error en Ghostscript (código {result.returncode})")
             if "gs: command not found" in result.stderr or result.returncode == 127:
                 print("⚠️ Ghostscript no instalado - copiando archivo sin comprimir")
             shutil.copy2(input_path, output_path)
@@ -135,7 +138,6 @@ def compress_pdf_images(input_path, output_path, quality=75):
 
 def process_zip(input_zip_path, output_zip_path, compression_level='medium'):
     """Procesa el ZIP completo manteniendo estructura"""
-    print(f"📦 DEBUG process_zip: Nivel de compresión = '{compression_level}'")
     temp_extract = tempfile.mkdtemp()
     temp_compress = tempfile.mkdtemp()
     
@@ -153,7 +155,6 @@ def process_zip(input_zip_path, output_zip_path, compression_level='medium'):
                 if file.lower().endswith('.pdf'):
                     total_pdfs += 1
                     input_pdf = os.path.join(root, file)
-                    print(f"📄 DEBUG: Procesando {file} con nivel '{compression_level}'")
                     
                     # Validar ruta para prevenir path traversal
                     try:
@@ -225,22 +226,11 @@ def compress():
         # Obtener nivel de compresión del formulario
         compression_level = request.form.get('compression', 'medium')
         
-        # DEBUG DETALLADO
-        print("\n" + "="*50)
-        print("🔍 DATOS RECIBIDOS DEL CLIENTE:")
-        print(f"  Archivo: {file.filename}")
-        print(f"  Form keys: {list(request.form.keys())}")
-        print(f"  Compression (bruto): {repr(compression_level)}")
-        print(f"  Compression (tipo): {type(compression_level)}")
-        print(f"  Compression (longitud): {len(compression_level)}")
-        print("="*50 + "\n")
-        
         # Validar que sea un nivel válido
         if compression_level not in ['low', 'medium', 'high']:
-            print(f"⚠️ DEBUG: Nivel inválido '{compression_level}', usando 'medium' por defecto")
             compression_level = 'medium'
         
-        print(f"✅ DEBUG: Usando nivel de compresión FINAL: '{compression_level}'")
+        print(f"\n✅ Comprimiendo con nivel: {compression_level.upper()}")
         
         # Sanitizar nombre
         filename = secure_filename(file.filename)

@@ -69,13 +69,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // DEBUG: Verificar qué radio está seleccionado
-        const compressionRadios = document.querySelectorAll('input[name="compression"]');
-        console.log('=== DEBUG RADIO BUTTONS ===');
-        compressionRadios.forEach((radio, idx) => {
-            console.log(`Radio ${idx}: value="${radio.value}" checked="${radio.checked}"`);
-        });
-        
         const selectedRadio = document.querySelector('input[name="compression"]:checked');
         if (!selectedRadio) {
             showResult('Error: No hay nivel de compresión seleccionado', 'error');
@@ -83,21 +76,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const compressionLevel = selectedRadio.value;
-        console.log(`✅ Nivel seleccionado: "${compressionLevel}"`);
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         formData.append('compression', compressionLevel);
-        
-        // DEBUG: Verificar qué se está enviando
-        console.log('FormData enviado:');
-        for (let [key, value] of formData.entries()) {
-            if (key === 'file') {
-                console.log(`  ${key}: ${value.name} (${value.size} bytes)`);
-            } else {
-                console.log(`  ${key}: ${value}`);
-            }
-        }
         
         // Obtener token CSRF del meta tag
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
