@@ -64,8 +64,13 @@ def get_ghostscript_params(compression_level, output_path, input_path):
     if compression_level == 'low':
         # Baja compresión - 40% (mantiene 60% tamaño)
         base_params.extend([
-            '-dPDFSETTINGS=/prepress',
-            '-dCompressLevel=3'
+            '-dPDFSETTINGS=/printer',
+            '-dCompressLevel=3',
+            '-dColorImageResolution=300',
+            '-dGrayImageResolution=300',
+            '-dDownsampleColorImages=true',
+            '-dDownsampleGrayImages=true',
+            '-dJPEGQFactor=85'
         ])
     elif compression_level == 'medium':
         # Media compresión - 65% (mantiene 35% tamaño)
@@ -76,16 +81,18 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dGrayImageResolution=150',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
-            '-dJPEGQFactor=60'
+            '-dColorImageDownsampleType=/Bicubic',
+            '-dGrayImageDownsampleType=/Bicubic',
+            '-dJPEGQFactor=75'
         ])
     else:  # high
-        # Alta compresión - 80% (mantiene 20% tamaño)
+        # Alta compresión - 80% (mantiene 20% tamaño) - con DPI más alto para mejor legibilidad
         base_params.extend([
             '-dPDFSETTINGS=/ebook',
             '-dCompressLevel=9',
-            '-dColorImageResolution=72',
-            '-dGrayImageResolution=72',
-            '-dMonoImageResolution=72',
+            '-dColorImageResolution=120',
+            '-dGrayImageResolution=120',
+            '-dMonoImageResolution=120',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
             '-dDownsampleMonoImages=true',
@@ -93,7 +100,7 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dGrayImageDownsampleType=/Bicubic',
             '-dDetectDuplicateImages',
             '-dCompressFonts=true',
-            '-dJPEGQFactor=40'
+            '-dJPEGQFactor=65'
         ])
     
     # El input va al final
@@ -107,8 +114,8 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
         # Obtener parámetros según nivel
         cmd = get_ghostscript_params(compression_level, output_path, input_path)
         
-        # Ejecutar con subprocess
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        # Ejecutar con subprocess - timeout aumentado para archivos grandes (1GB)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
         
         if result.returncode == 0 and os.path.exists(output_path):
             input_size = os.path.getsize(input_path)

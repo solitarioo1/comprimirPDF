@@ -17,5 +17,5 @@ COPY . .
 # Exponer puerto
 EXPOSE 5000
 
-# Ejecutar con Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "300", "--workers", "2", "app:app"]
+# Ejecutar con Gunicorn - timeout aumentado para archivos grandes (15 minutos)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "900", "--workers", "2", "app:app"]
