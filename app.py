@@ -50,46 +50,40 @@ def sanitize_path(path):
 def get_ghostscript_params(compression_level, output_path, input_path):
     """Retorna parámetros de Ghostscript según nivel de compresión"""
     
-    # Parámetros base - ORDEN IMPORTA
+    # Parámetros EXPLÍCITOS - NO depender de presets que pueden fallar
     base_params = [
         'gs',
         '-sDEVICE=pdfwrite',
         '-dNOPAUSE',
         '-dBATCH',
         '-dQUIET',
+        '-dDetectDuplicateImages',
+        '-dCompressFonts=true',
+        '-dCompressStreams=true',
+        '-dUseFlateCompression=true',
         f'-sOutputFile={output_path}'
     ]
     
-    # Ajustar según nivel - PROPORCIONES: BAJO 40%, MEDIO 65%, ALTO 80%
+    # Ajustar según nivel - sin presets, parámetros explícitos
     if compression_level == 'low':
-        # Baja compresión - 40% (mantiene 60% tamaño)
+        # Baja compresión - 40% reducción
+        print("🎨 LOW: 240 DPI, JPEG 88%, CompressLevel 4")
         base_params.extend([
-            '-dPDFSETTINGS=/printer',
-            '-dCompressLevel=3',
-            '-dColorImageResolution=300',
-            '-dGrayImageResolution=300',
+            '-dColorImageResolution=240',
+            '-dGrayImageResolution=240',
+            '-dMonoImageResolution=240',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
-            '-dJPEGQFactor=85'
-        ])
-    elif compression_level == 'medium':
-        # Media compresión - 65% (mantiene 35% tamaño)
-        base_params.extend([
-            '-dPDFSETTINGS=/screen',
-            '-dCompressLevel=7',
-            '-dColorImageResolution=150',
-            '-dGrayImageResolution=150',
-            '-dDownsampleColorImages=true',
-            '-dDownsampleGrayImages=true',
+            '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dJPEGQFactor=75'
+            '-dJPEGQFactor=88',
+            '-dCompressLevel=4'
         ])
-    else:  # high
-        # Alta compresión - 80% (mantiene 20% tamaño) - con DPI más alto para mejor legibilidad
+    elif compression_level == 'medium':
+        # Media compresión - 65% reducción
+        print("⚖️ MEDIUM: 120 DPI, JPEG 70%, CompressLevel 7")
         base_params.extend([
-            '-dPDFSETTINGS=/ebook',
-            '-dCompressLevel=9',
             '-dColorImageResolution=120',
             '-dGrayImageResolution=120',
             '-dMonoImageResolution=120',
@@ -98,9 +92,25 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dDetectDuplicateImages',
-            '-dCompressFonts=true',
-            '-dJPEGQFactor=65'
+            '-dMonoImageDownsampleType=/Bicubic',
+            '-dJPEGQFactor=70',
+            '-dCompressLevel=7'
+        ])
+    else:  # high
+        # Alta compresión - 80% reducción
+        print("⚡ HIGH: 96 DPI, JPEG 60%, CompressLevel 9")
+        base_params.extend([
+            '-dColorImageResolution=96',
+            '-dGrayImageResolution=96',
+            '-dMonoImageResolution=96',
+            '-dDownsampleColorImages=true',
+            '-dDownsampleGrayImages=true',
+            '-dDownsampleMonoImages=true',
+            '-dColorImageDownsampleType=/Bicubic',
+            '-dGrayImageDownsampleType=/Bicubic',
+            '-dMonoImageDownsampleType=/Bicubic',
+            '-dJPEGQFactor=60',
+            '-dCompressLevel=9'
         ])
     
     # El input va al final
