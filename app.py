@@ -49,8 +49,12 @@ def sanitize_path(path):
 
 def get_ghostscript_params(compression_level, output_path, input_path):
     """Retorna parámetros de Ghostscript según nivel de compresión"""
-    
-    # Parámetros EXPLÍCITOS - NO depender de presets que pueden fallar
+
+    # NOTA: -dJPEGQFactor NO es un parámetro válido de Ghostscript y era ignorado.
+    # La calidad JPEG real se controla via -dPDFSETTINGS (que configura los
+    # image dicts internos).  Las resoluciones explícitas sobreescriben las del preset.
+    # -dColorImageDownsampleThreshold=1.0 fuerza el downsample sin importar la
+    # resolución original (sin esto, imágenes a 300 DPI no se reducen en nivel 'low').
     base_params = [
         'gs',
         '-sDEVICE=pdfwrite',
@@ -60,62 +64,68 @@ def get_ghostscript_params(compression_level, output_path, input_path):
         '-dDetectDuplicateImages',
         '-dCompressFonts=true',
         '-dCompressStreams=true',
-        '-dUseFlateCompression=true',
+        '-dEmbedAllFonts=true',
         f'-sOutputFile={output_path}'
     ]
-    
-    # Ajustar según nivel - sin presets, parámetros explícitos
+
     if compression_level == 'low':
-        # Baja compresión - 40% reducción
-        print("🎨 LOW: 240 DPI, JPEG 88%, CompressLevel 4")
+        # Baja compresión: 240 DPI, JPEG calidad alta (QFactor ~0.40 via /printer)
+        print("🎨 LOW: 240 DPI, PDFSETTINGS=/printer")
         base_params.extend([
+            '-dPDFSETTINGS=/printer',
             '-dColorImageResolution=240',
             '-dGrayImageResolution=240',
-            '-dMonoImageResolution=240',
+            '-dMonoImageResolution=300',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dJPEGQFactor=88',
-            '-dCompressLevel=4'
+            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX: Bicubic no es válido para mono
+            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX: sin esto 300 DPI no se reducía
+            '-dGrayImageDownsampleThreshold=1.0',
+            '-dMonoImageDownsampleThreshold=1.0',
         ])
     elif compression_level == 'medium':
-        # Media compresión - 65% reducción
-        print("⚖️ MEDIUM: 120 DPI, JPEG 70%, CompressLevel 7")
+        # Media compresión: 120 DPI, JPEG calidad media (QFactor ~0.76 via /ebook)
+        print("⚖️ MEDIUM: 120 DPI, PDFSETTINGS=/ebook")
         base_params.extend([
+            '-dPDFSETTINGS=/ebook',
             '-dColorImageResolution=120',
             '-dGrayImageResolution=120',
-            '-dMonoImageResolution=120',
+            '-dMonoImageResolution=150',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dMonoImageDownsampleType=/Bicubic',
-            '-dJPEGQFactor=70',
-            '-dCompressLevel=7'
+            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX
+            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX
+            '-dGrayImageDownsampleThreshold=1.0',
+            '-dMonoImageDownsampleThreshold=1.0',
         ])
     else:  # high
-        # Alta compresión - 80% reducción
-        print("⚡ HIGH: 96 DPI, JPEG 60%, CompressLevel 9")
+        # Alta compresión: 96 DPI, JPEG calidad baja (QFactor ~1.30 via /screen)
+        print("⚡ HIGH: 96 DPI, PDFSETTINGS=/screen")
         base_params.extend([
+            '-dPDFSETTINGS=/screen',
             '-dColorImageResolution=96',
             '-dGrayImageResolution=96',
-            '-dMonoImageResolution=96',
+            '-dMonoImageResolution=100',
             '-dDownsampleColorImages=true',
             '-dDownsampleGrayImages=true',
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dMonoImageDownsampleType=/Bicubic',
-            '-dJPEGQFactor=60',
-            '-dCompressLevel=9'
+            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX
+            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX
+            '-dGrayImageDownsampleThreshold=1.0',
+            '-dMonoImageDownsampleThreshold=1.0',
         ])
-    
+
     # El input va al final
     base_params.append(input_path)
-    
+
     return base_params
 
 def compress_pdf(input_path, output_path, compression_level='medium'):
@@ -151,7 +161,14 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
 
 def compress_pdf_images(input_path, output_path, quality=75):
     """Alias para mantener compatibilidad"""
-    return compress_pdf(input_path, output_path)
+    # Mapear quality numérico al nivel de compresión
+    if quality >= 85:
+        level = 'low'
+    elif quality >= 65:
+        level = 'medium'
+    else:
+        level = 'high'
+    return compress_pdf(input_path, output_path, level)
 
 def process_zip(input_zip_path, output_zip_path, compression_level='medium'):
     """Procesa el ZIP completo manteniendo estructura"""
@@ -272,6 +289,15 @@ def compress():
         os.remove(input_path)
         
         if result['success']:
+            # BUG FIX: eliminar el archivo temporal después de enviarlo
+            @app.after_this_request
+            def remove_output_file(response):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+                return response
+
             return send_file(
                 output_path,
                 as_attachment=True,
