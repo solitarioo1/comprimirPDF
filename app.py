@@ -1,4 +1,5 @@
 import os
+import uuid
 import zipfile
 import tempfile
 import shutil
@@ -268,28 +269,32 @@ def compress():
         
         # Sanitizar nombre
         filename = secure_filename(file.filename)
-        
-        # Guardar archivo temporal
-        input_path = os.path.join(tempfile.gettempdir(), filename)
+
+        # BUG FIX: usar UUID para evitar colisión entre peticiones simultáneas
+        unique_id = uuid.uuid4().hex
+        input_path = os.path.join(tempfile.gettempdir(), f"{unique_id}_{filename}")
         file.save(input_path)
-        
+
         # Validar que es un ZIP válido
         if not zipfile.is_zipfile(input_path):
             os.remove(input_path)
             return jsonify({'error': 'Archivo ZIP inválido'}), 400
-        
-        # Crear archivo de salida
+
         output_filename = f"compressed_{filename}"
-        output_path = os.path.join(tempfile.gettempdir(), output_filename)
-        
-        # Procesar con nivel de compresión especificado
-        result = process_zip(input_path, output_path, compression_level)
-        
-        # Limpiar entrada
-        os.remove(input_path)
-        
+        output_path = os.path.join(tempfile.gettempdir(), f"{unique_id}_{output_filename}")
+
+        try:
+            # Procesar con nivel de compresión especificado
+            result = process_zip(input_path, output_path, compression_level)
+        finally:
+            # BUG FIX: limpiar entrada siempre, incluso si process_zip lanza excepción
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+
         if result['success']:
-            # BUG FIX: eliminar el archivo temporal después de enviarlo
+            # Eliminar el archivo temporal de salida después de enviarlo
             @app.after_this_request
             def remove_output_file(response):
                 try:
