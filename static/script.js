@@ -112,9 +112,14 @@ document.addEventListener('DOMContentLoaded', function() {
             progressFill.style.width = '100%';
 
             if (!response.ok) {
-                return response.json().then(data => {
-                    throw new Error(data.error || 'Error en el servidor');
-                });
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `Error en el servidor (${response.status})`);
+                    });
+                } else {
+                    throw new Error(`Error en el servidor (${response.status}). Recarga la página e intenta de nuevo.`);
+                }
             }
             
             return response.blob();

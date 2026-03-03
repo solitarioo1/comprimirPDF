@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, send_file, jsonify
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.utils import secure_filename
 
 # Cargar variables de entorno desde .env
@@ -318,6 +318,18 @@ def compress():
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({'error': 'Archivo demasiado grande (máx 500MB)'}), 413
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    return jsonify({'error': 'Token de seguridad inválido. Recarga la página e intenta de nuevo.'}), 400
+
+@app.errorhandler(400)
+def bad_request(e):
+    return jsonify({'error': 'Solicitud inválida. Por favor intenta de nuevo.'}), 400
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({'error': 'Error interno del servidor.'}), 500
 
 @app.route('/test-compression', methods=['GET'])
 def test_compression_endpoint():
