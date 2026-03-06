@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Enviar formulario
-    form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         if (!fileInput.files.length) {
@@ -74,83 +74,98 @@ document.addEventListener('DOMContentLoaded', function() {
             showResult('Error: No hay nivel de compresión seleccionado', 'error');
             return;
         }
-        
-        const compressionLevel = selectedRadio.value;
 
+        const compressionLevel = selectedRadio.value;
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         formData.append('compression', compressionLevel);
-        
-        // Obtener token CSRF del meta tag
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-        // Mostrar progreso
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const originalFileName = fileInput.files[0].name;
+
         btnCompress.disabled = true;
         btnCompress.textContent = 'Procesando...';
         progress.classList.remove('hidden');
         result.classList.add('hidden');
-        
-        // Simular progreso
-        let progressValue = 0;
-        const progressInterval = setInterval(() => {
-            progressValue += 1;
-            if (progressValue <= 90) {
-                progressFill.style.width = progressValue + '%';
-            }
-        }, 200);
+        progressFill.style.width = '2%';
 
-        // Enviar petición
-        fetch('/compress', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken
-            },
-            body: formData
-        })
-        .then(response => {
-            clearInterval(progressInterval);
-            progressFill.style.width = '100%';
+        try {
+            // 1. Subir archivo → obtener job_id
+            const submitRes = await fetch('/compress', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken },
+                body: formData
+            });
 
-            if (!response.ok) {
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || `Error en el servidor (${response.status})`);
-                    });
-                } else {
-                    throw new Error(`Error en el servidor (${response.status}). Recarga la página e intenta de nuevo.`);
-                }
+            const contentType = submitRes.headers.get('content-type') || '';
+            if (!submitRes.ok) {
+                const msg = contentType.includes('application/json')
+                    ? (await submitRes.json()).error
+                    : `Error en el servidor (${submitRes.status}). Recarga la página.`;
+                throw new Error(msg);
             }
-            
-            return response.blob();
-        })
-        .then(blob => {
-            // Descargar archivo
+
+            const { job_id } = await submitRes.json();
+
+            // 2. Esperar con progreso real
+            await pollProgress(job_id);
+
+            // 3. Descargar resultado
+            const dlRes = await fetch(`/download/${job_id}`);
+            if (!dlRes.ok) {
+                const data = await dlRes.json();
+                throw new Error(data.error || 'Error descargando el archivo');
+            }
+            const blob = await dlRes.blob();
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'compressed_' + fileInput.files[0].name;
+            a.download = 'compressed_' + originalFileName;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
             showResult('¡PDFs comprimidos correctamente! Descarga iniciada.', 'success');
-            
-            // Resetear formulario
             form.reset();
             fileName.textContent = '';
-        })
-        .catch(error => {
+
+        } catch (error) {
             showResult('Error: ' + error.message, 'error');
-        })
-        .finally(() => {
+        } finally {
             btnCompress.disabled = false;
             btnCompress.textContent = 'Comprimir PDFs';
             progress.classList.add('hidden');
             progressFill.style.width = '0%';
-        });
+        }
     });
+
+    async function pollProgress(jobId) {
+        return new Promise((resolve, reject) => {
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/progress/${jobId}`);
+                    const data = await res.json();
+
+                    if (data.status === 'done') {
+                        clearInterval(interval);
+                        progressFill.style.width = '100%';
+                        resolve();
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        reject(new Error(data.error || 'Error en el servidor'));
+                    } else if (data.total > 0) {
+                        const pct = Math.max(5, Math.round((data.current / data.total) * 95));
+                        progressFill.style.width = pct + '%';
+                    }
+                } catch (e) {
+                    clearInterval(interval);
+                    reject(new Error('Error de conexión con el servidor'));
+                }
+            }, 1000);
+        });
+    }
 
     function showResult(message, type) {
         result.textContent = message;

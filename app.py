@@ -4,6 +4,8 @@ import zipfile
 import tempfile
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, send_file, jsonify
@@ -21,21 +23,33 @@ csrf = CSRFProtect(app)
 
 ALLOWED_EXTENSIONS = {'zip'}
 
+jobs: dict = {}
+jobs_lock = threading.Lock()
+
 # Verificar Ghostscript disponible
-def check_ghostscript():
-    """Verifica si Ghostscript está instalado"""
-    try:
-        result = subprocess.run(['gs', '--version'], capture_output=True, text=True)
-        return result.returncode == 0
-    except FileNotFoundError:
-        return False
+# En Linux/Docker el ejecutable es 'gs'; en Windows puede ser 'gswin64c' o 'gswin32c'
+GS_EXECUTABLE = 'gs'
+
+def check_ghostscript() -> bool:
+    """Verifica si Ghostscript está instalado, buscando el ejecutable correcto por plataforma."""
+    candidates = ['gs', 'gswin64c', 'gswin32c']
+    for cmd in candidates:
+        try:
+            result = subprocess.run([cmd, '--version'], capture_output=True, text=True)
+            if result.returncode == 0:
+                global GS_EXECUTABLE
+                GS_EXECUTABLE = cmd
+                return True
+        except FileNotFoundError:
+            continue
+    return False
 
 GHOSTSCRIPT_AVAILABLE = check_ghostscript()
 
 @app.before_request
 def check_ghostscript_middleware():
     """Alerta si Ghostscript no está disponible"""
-    if not GHOSTSCRIPT_AVAILABLE and request.path == '/compress':
+    if not GHOSTSCRIPT_AVAILABLE and request.path == '/compress' and request.method == 'POST':
         return jsonify({'error': 'Ghostscript no está instalado en el servidor'}), 500
 
 def allowed_file(filename):
@@ -57,7 +71,7 @@ def get_ghostscript_params(compression_level, output_path, input_path):
     # -dColorImageDownsampleThreshold=1.0 fuerza el downsample sin importar la
     # resolución original (sin esto, imágenes a 300 DPI no se reducen en nivel 'low').
     base_params = [
-        'gs',
+        GS_EXECUTABLE,
         '-sDEVICE=pdfwrite',
         '-dNOPAUSE',
         '-dBATCH',
@@ -160,85 +174,109 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
         shutil.copy2(input_path, output_path)
         return False
 
-def compress_pdf_images(input_path, output_path, quality=75):
-    """Alias para mantener compatibilidad"""
-    # Mapear quality numérico al nivel de compresión
-    if quality >= 85:
-        level = 'low'
-    elif quality >= 65:
-        level = 'medium'
-    else:
-        level = 'high'
-    return compress_pdf(input_path, output_path, level)
-
-def process_zip(input_zip_path, output_zip_path, compression_level='medium'):
+def process_zip(input_zip_path: str, output_zip_path: str, compression_level: str = 'medium', progress_callback=None) -> dict:
     """Procesa el ZIP completo manteniendo estructura"""
     temp_extract = tempfile.mkdtemp()
     temp_compress = tempfile.mkdtemp()
-    
+
+    MAX_UNCOMPRESSED = 2 * 1024 * 1024 * 1024
     try:
-        # Extraer ZIP
         with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
+            total_size = sum(info.file_size for info in zip_ref.infolist())
+            if total_size > MAX_UNCOMPRESSED:
+                raise ValueError(f'El ZIP descomprimido supera el límite de 2GB ({total_size // (1024**2)}MB)')
             zip_ref.extractall(temp_extract)
-        
-        # Procesar cada PDF manteniendo estructura
-        total_pdfs = 0
+
+        # Recoger todos los archivos y contar PDFs antes de procesar (para progreso real)
+        all_files = [
+            (root, f)
+            for root, _, files in os.walk(temp_extract)
+            for f in files
+        ]
+        total_pdfs = sum(1 for _, f in all_files if f.lower().endswith('.pdf'))
+        processed_pdfs = 0
         compressed_pdfs = 0
-        
-        for root, dirs, files in os.walk(temp_extract):
-            for file in files:
-                if file.lower().endswith('.pdf'):
-                    total_pdfs += 1
-                    input_pdf = os.path.join(root, file)
-                    
-                    # Validar ruta para prevenir path traversal
-                    try:
-                        rel_path = sanitize_path(os.path.relpath(input_pdf, temp_extract))
-                    except ValueError as e:
-                        print(f"Path rechazado: {input_pdf}")
-                        continue
-                    
-                    output_pdf = os.path.join(temp_compress, str(rel_path))
-                    
-                    # Crear directorio si no existe
-                    os.makedirs(os.path.dirname(output_pdf), exist_ok=True)
-                    
-                    # Comprimir PDF con nivel especificado
-                    if compress_pdf(input_pdf, output_pdf, compression_level):
-                        compressed_pdfs += 1
-                else:
-                    # Copiar archivos no-PDF
-                    input_file = os.path.join(root, file)
-                    
-                    # Validar ruta para prevenir path traversal
-                    try:
-                        rel_path = sanitize_path(os.path.relpath(input_file, temp_extract))
-                    except ValueError as e:
-                        print(f"Path rechazado: {input_file}")
-                        continue
-                    
-                    output_file = os.path.join(temp_compress, str(rel_path))
-                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                    shutil.copy2(input_file, output_file)
-        
-        # Crear nuevo ZIP
+
+        if progress_callback:
+            progress_callback(0, total_pdfs or 1)
+
+        for root, file in all_files:
+            if file.lower().endswith('.pdf'):
+                input_pdf = os.path.join(root, file)
+
+                try:
+                    rel_path = sanitize_path(os.path.relpath(input_pdf, temp_extract))
+                except ValueError:
+                    print(f"Path rechazado: {input_pdf}")
+                    continue
+
+                output_pdf = os.path.join(temp_compress, str(rel_path))
+                os.makedirs(os.path.dirname(output_pdf), exist_ok=True)
+
+                if compress_pdf(input_pdf, output_pdf, compression_level):
+                    compressed_pdfs += 1
+
+                processed_pdfs += 1
+                if progress_callback:
+                    progress_callback(processed_pdfs, total_pdfs or 1)
+            else:
+                input_file = os.path.join(root, file)
+
+                try:
+                    rel_path = sanitize_path(os.path.relpath(input_file, temp_extract))
+                except ValueError:
+                    print(f"Path rechazado: {input_file}")
+                    continue
+
+                output_file = os.path.join(temp_compress, str(rel_path))
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                shutil.copy2(input_file, output_file)
+
         with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(temp_compress):
                 for file in files:
                     file_path = os.path.join(root, file)
                     arcname = os.path.relpath(file_path, temp_compress)
                     zipf.write(file_path, arcname)
-        
+
         return {
             'success': True,
             'total_pdfs': total_pdfs,
             'compressed_pdfs': compressed_pdfs
         }
-        
+
     finally:
-        # Limpiar temporales
         shutil.rmtree(temp_extract, ignore_errors=True)
         shutil.rmtree(temp_compress, ignore_errors=True)
+
+
+def run_job(job_id: str, input_path: str, output_path: str, compression_level: str, output_filename: str) -> None:
+    """Ejecuta la compresión en un thread y actualiza el estado del job"""
+    try:
+        def progress_callback(current: int, total: int) -> None:
+            with jobs_lock:
+                jobs[job_id]['current'] = current
+                jobs[job_id]['total'] = total
+
+        result = process_zip(input_path, output_path, compression_level, progress_callback)
+
+        with jobs_lock:
+            if result['success']:
+                jobs[job_id].update({
+                    'status': 'done',
+                    'output_path': output_path,
+                    'output_filename': output_filename,
+                })
+            else:
+                jobs[job_id].update({'status': 'error', 'error': 'Error procesando el archivo'})
+    except Exception as e:
+        with jobs_lock:
+            jobs[job_id].update({'status': 'error', 'error': str(e)})
+    finally:
+        try:
+            os.remove(input_path)
+        except OSError:
+            pass
 
 @app.route('/')
 def index():
@@ -248,34 +286,30 @@ def index():
 def compress():
     if 'file' not in request.files:
         return jsonify({'error': 'No se envió ningún archivo'}), 400
-    
+
     file = request.files['file']
-    
+
     if file.filename == '':
         return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
-    
+
     if not allowed_file(file.filename):
         return jsonify({'error': 'Solo se permiten archivos ZIP'}), 400
-    
+
     try:
-        # Obtener nivel de compresión del formulario
         compression_level = request.form.get('compression', 'medium')
-        
-        # Validar que sea un nivel válido
         if compression_level not in ['low', 'medium', 'high']:
             compression_level = 'medium'
-        
-        print(f"\n✅ Comprimiendo con nivel: {compression_level.upper()}")
-        
-        # Sanitizar nombre
-        filename = secure_filename(file.filename)
 
-        # BUG FIX: usar UUID para evitar colisión entre peticiones simultáneas
+        print(f"\n✅ Comprimiendo con nivel: {compression_level.upper()}")
+
+        filename = secure_filename(file.filename)
+        if not filename:
+            return jsonify({'error': 'Nombre de archivo inválido'}), 400
+
         unique_id = uuid.uuid4().hex
         input_path = os.path.join(tempfile.gettempdir(), f"{unique_id}_{filename}")
         file.save(input_path)
 
-        # Validar que es un ZIP válido
         if not zipfile.is_zipfile(input_path):
             os.remove(input_path)
             return jsonify({'error': 'Archivo ZIP inválido'}), 400
@@ -283,37 +317,84 @@ def compress():
         output_filename = f"compressed_{filename}"
         output_path = os.path.join(tempfile.gettempdir(), f"{unique_id}_{output_filename}")
 
-        try:
-            # Procesar con nivel de compresión especificado
-            result = process_zip(input_path, output_path, compression_level)
-        finally:
-            # BUG FIX: limpiar entrada siempre, incluso si process_zip lanza excepción
-            try:
-                os.remove(input_path)
-            except OSError:
-                pass
+        job_id = unique_id
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'processing',
+                'current': 0,
+                'total': 0,
+                'created_at': time.time()
+            }
 
-        if result['success']:
-            # Eliminar el archivo temporal de salida después de enviarlo
-            @app.after_this_request
-            def remove_output_file(response):
-                try:
-                    os.remove(output_path)
-                except OSError:
-                    pass
-                return response
+        threading.Thread(
+            target=run_job,
+            args=(job_id, input_path, output_path, compression_level, output_filename),
+            daemon=True
+        ).start()
 
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name=output_filename,
-                mimetype='application/zip'
-            )
-        else:
-            return jsonify({'error': 'Error procesando el archivo'}), 500
-            
+        return jsonify({'job_id': job_id})
+
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/progress/<job_id>')
+def job_progress(job_id):
+    now = time.time()
+    with jobs_lock:
+        # Limpiar jobs expirados (más de 1 hora)
+        expired = [
+            jid for jid, job in jobs.items()
+            if job['status'] in ('done', 'error') and now - job.get('created_at', now) > 3600
+        ]
+        for jid in expired:
+            output = jobs[jid].get('output_path')
+            if output:
+                try:
+                    os.remove(output)
+                except OSError:
+                    pass
+            del jobs[jid]
+        job = jobs.get(job_id)
+
+    if not job:
+        return jsonify({'error': 'Job no encontrado'}), 404
+
+    return jsonify({
+        'status': job['status'],
+        'current': job.get('current', 0),
+        'total': job.get('total', 0),
+        'error': job.get('error')
+    })
+
+
+@app.route('/download/<job_id>')
+def job_download(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job or job['status'] != 'done':
+        return jsonify({'error': 'Archivo no disponible'}), 404
+
+    output_path = job['output_path']
+    output_filename = job['output_filename']
+
+    @app.after_this_request
+    def cleanup(response):
+        with jobs_lock:
+            jobs.pop(job_id, None)
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+        return response
+
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name=output_filename,
+        mimetype='application/zip'
+    )
 
 @app.errorhandler(413)
 def too_large(e):
@@ -334,6 +415,8 @@ def internal_error(e):
 @app.route('/test-compression', methods=['GET'])
 def test_compression_endpoint():
     """Endpoint de prueba para verificar que los parámetros funcionan"""
+    if os.environ.get('FLASK_DEBUG', 'false').lower() != 'true':
+        return jsonify({'error': 'Not found'}), 404
     test_dir = tempfile.mkdtemp()
     
     try:
@@ -405,4 +488,5 @@ startxref
         shutil.rmtree(test_dir, ignore_errors=True)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000)
