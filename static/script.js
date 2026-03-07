@@ -14,8 +14,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const file = this.files[0];
             fileName.textContent = file.name;
             
-            // Validar tamaño (500MB)
-            if (file.size > 500 * 1024 * 1024) {
+            // Validar tamaño (1GB)
+            if (file.size > 1224 * 1024 * 1024) {
                 showResult('El archivo es demasiado grande. Máximo 500MB.', 'error');
                 this.value = '';
                 fileName.textContent = '';
