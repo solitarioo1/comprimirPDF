@@ -17,6 +17,7 @@ EXPOSE 5000
 LABEL traefik.http.middlewares.pdfs-buffering.buffering.maxRequestBodyBytes=1073741824
 LABEL traefik.http.middlewares.pdfs-buffering.buffering.memRequestBodyBytes=1073741824
 LABEL traefik.http.routers.pdfs.middlewares=pdfs-buffering
+LABEL traefik.http.routers.pdfs.entrypoints=websecure
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:5000/ || exit 1
