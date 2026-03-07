@@ -26,12 +26,9 @@ ALLOWED_EXTENSIONS = {'zip'}
 jobs: dict = {}
 jobs_lock = threading.Lock()
 
-# Verificar Ghostscript disponible
-# En Linux/Docker el ejecutable es 'gs'; en Windows puede ser 'gswin64c' o 'gswin32c'
 GS_EXECUTABLE = 'gs'
 
 def check_ghostscript() -> bool:
-    """Verifica si Ghostscript está instalado, buscando el ejecutable correcto por plataforma."""
     candidates = ['gs', 'gswin64c', 'gswin32c']
     for cmd in candidates:
         try:
@@ -48,7 +45,6 @@ GHOSTSCRIPT_AVAILABLE = check_ghostscript()
 
 @app.before_request
 def check_ghostscript_middleware():
-    """Alerta si Ghostscript no está disponible"""
     if not GHOSTSCRIPT_AVAILABLE and request.path == '/compress' and request.method == 'POST':
         return jsonify({'error': 'Ghostscript no está instalado en el servidor'}), 500
 
@@ -56,20 +52,12 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def sanitize_path(path):
-    """Prevenir path traversal attacks"""
     path = Path(path)
     if '..' in path.parts or path.is_absolute():
         raise ValueError("Path no permitido")
     return path
 
 def get_ghostscript_params(compression_level, output_path, input_path):
-    """Retorna parámetros de Ghostscript según nivel de compresión"""
-
-    # NOTA: -dJPEGQFactor NO es un parámetro válido de Ghostscript y era ignorado.
-    # La calidad JPEG real se controla via -dPDFSETTINGS (que configura los
-    # image dicts internos).  Las resoluciones explícitas sobreescriben las del preset.
-    # -dColorImageDownsampleThreshold=1.0 fuerza el downsample sin importar la
-    # resolución original (sin esto, imágenes a 300 DPI no se reducen en nivel 'low').
     base_params = [
         GS_EXECUTABLE,
         '-sDEVICE=pdfwrite',
@@ -84,7 +72,6 @@ def get_ghostscript_params(compression_level, output_path, input_path):
     ]
 
     if compression_level == 'low':
-        # Baja compresión: 240 DPI, JPEG calidad alta (QFactor ~0.40 via /printer)
         print("🎨 LOW: 240 DPI, PDFSETTINGS=/printer")
         base_params.extend([
             '-dPDFSETTINGS=/printer',
@@ -96,13 +83,12 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX: Bicubic no es válido para mono
-            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX: sin esto 300 DPI no se reducía
+            '-dMonoImageDownsampleType=/Subsample',
+            '-dColorImageDownsampleThreshold=1.0',
             '-dGrayImageDownsampleThreshold=1.0',
             '-dMonoImageDownsampleThreshold=1.0',
         ])
     elif compression_level == 'medium':
-        # Media compresión: 120 DPI, JPEG calidad media (QFactor ~0.76 via /ebook)
         print("⚖️ MEDIUM: 120 DPI, PDFSETTINGS=/ebook")
         base_params.extend([
             '-dPDFSETTINGS=/ebook',
@@ -114,13 +100,12 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX
-            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX
+            '-dMonoImageDownsampleType=/Subsample',
+            '-dColorImageDownsampleThreshold=1.0',
             '-dGrayImageDownsampleThreshold=1.0',
             '-dMonoImageDownsampleThreshold=1.0',
         ])
     else:  # high
-        # Alta compresión: 96 DPI, JPEG calidad baja (QFactor ~1.30 via /screen)
         print("⚡ HIGH: 96 DPI, PDFSETTINGS=/screen")
         base_params.extend([
             '-dPDFSETTINGS=/screen',
@@ -132,26 +117,20 @@ def get_ghostscript_params(compression_level, output_path, input_path):
             '-dDownsampleMonoImages=true',
             '-dColorImageDownsampleType=/Bicubic',
             '-dGrayImageDownsampleType=/Bicubic',
-            '-dMonoImageDownsampleType=/Subsample',      # BUG FIX
-            '-dColorImageDownsampleThreshold=1.0',      # BUG FIX
+            '-dMonoImageDownsampleType=/Subsample',
+            '-dColorImageDownsampleThreshold=1.0',
             '-dGrayImageDownsampleThreshold=1.0',
             '-dMonoImageDownsampleThreshold=1.0',
         ])
 
-    # El input va al final
     base_params.append(input_path)
-
     return base_params
 
 def compress_pdf(input_path, output_path, compression_level='medium'):
-    """Comprime un PDF usando Ghostscript con nivel de compresión"""
     try:
-        # Obtener parámetros según nivel
         cmd = get_ghostscript_params(compression_level, output_path, input_path)
-        
-        # Ejecutar con subprocess - timeout aumentado para archivos grandes (1GB)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        
+
         if result.returncode == 0 and os.path.exists(output_path):
             input_size = os.path.getsize(input_path)
             output_size = os.path.getsize(output_path)
@@ -160,11 +139,9 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
             return True
         else:
             print(f"❌ Error en Ghostscript (código {result.returncode})")
-            if "gs: command not found" in result.stderr or result.returncode == 127:
-                print("⚠️ Ghostscript no instalado - copiando archivo sin comprimir")
             shutil.copy2(input_path, output_path)
             return False
-        
+
     except FileNotFoundError:
         print("Ghostscript no instalado")
         shutil.copy2(input_path, output_path)
@@ -175,7 +152,6 @@ def compress_pdf(input_path, output_path, compression_level='medium'):
         return False
 
 def process_zip(input_zip_path: str, output_zip_path: str, compression_level: str = 'medium', progress_callback=None) -> dict:
-    """Procesa el ZIP completo manteniendo estructura"""
     temp_extract = tempfile.mkdtemp()
     temp_compress = tempfile.mkdtemp()
 
@@ -187,7 +163,6 @@ def process_zip(input_zip_path: str, output_zip_path: str, compression_level: st
                 raise ValueError(f'El ZIP descomprimido supera el límite de 2GB ({total_size // (1024**2)}MB)')
             zip_ref.extractall(temp_extract)
 
-        # Recoger todos los archivos y contar PDFs antes de procesar (para progreso real)
         all_files = [
             (root, f)
             for root, _, files in os.walk(temp_extract)
@@ -251,7 +226,6 @@ def process_zip(input_zip_path: str, output_zip_path: str, compression_level: st
 
 
 def run_job(job_id: str, input_path: str, output_path: str, compression_level: str, output_filename: str) -> None:
-    """Ejecuta la compresión en un thread y actualiza el estado del job"""
     try:
         def progress_callback(current: int, total: int) -> None:
             with jobs_lock:
@@ -342,9 +316,8 @@ def compress():
 def job_progress(job_id):
     now = time.time()
     with jobs_lock:
-        # Limpiar jobs expirados (más de 1 hora)
         expired = [
-            jid for jid, job in jobs.items()
+            jid for jid, job in list(jobs.items())
             if job['status'] in ('done', 'error') and now - job.get('created_at', now) > 3600
         ]
         for jid in expired:
@@ -379,22 +352,24 @@ def job_download(job_id):
     output_path = job['output_path']
     output_filename = job['output_filename']
 
-    @app.after_this_request
-    def cleanup(response):
-        with jobs_lock:
-            jobs.pop(job_id, None)
-        try:
-            os.remove(output_path)
-        except OSError:
-            pass
-        return response
+    # ✅ BUG FIX: after_this_request no existe en Flask 3.x, limpiamos antes de enviar
+    with jobs_lock:
+        jobs.pop(job_id, None)
 
-    return send_file(
+    response = send_file(
         output_path,
         as_attachment=True,
         download_name=output_filename,
         mimetype='application/zip'
     )
+
+    try:
+        os.remove(output_path)
+    except OSError:
+        pass
+
+    return response
+
 
 @app.errorhandler(413)
 def too_large(e):
@@ -414,15 +389,12 @@ def internal_error(e):
 
 @app.route('/test-compression', methods=['GET'])
 def test_compression_endpoint():
-    """Endpoint de prueba para verificar que los parámetros funcionan"""
     if os.environ.get('FLASK_DEBUG', 'false').lower() != 'true':
         return jsonify({'error': 'Not found'}), 404
     test_dir = tempfile.mkdtemp()
-    
+
     try:
-        # Crear un PDF de test simple
         test_pdf = os.path.join(test_dir, "test.pdf")
-        # Usar un PDF mínimo
         with open(test_pdf, 'wb') as f:
             f.write(b"""%PDF-1.4
 1 0 obj
@@ -460,14 +432,11 @@ trailer
 startxref
 427
 %%EOF""")
-        
+
         results = {}
-        
-        # Probar los 3 niveles
         for level in ['low', 'medium', 'high']:
             output = os.path.join(test_dir, f"test_{level}.pdf")
             compress_pdf(test_pdf, output, level)
-            
             if os.path.exists(output):
                 original_size = os.path.getsize(test_pdf)
                 compressed_size = os.path.getsize(output)
@@ -477,13 +446,13 @@ startxref
                     'compressed': compressed_size,
                     'ratio': f"{ratio:.1f}%"
                 }
-        
+
         return jsonify({
             'success': True,
             'results': results,
-            'message': 'Prueba completada. Si los tamaños son diferentes, Ghostscript está funcionando.'
+            'message': 'Prueba completada.'
         })
-        
+
     finally:
         shutil.rmtree(test_dir, ignore_errors=True)
 
