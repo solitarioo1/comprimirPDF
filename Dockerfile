@@ -14,8 +14,8 @@ COPY . .
 
 EXPOSE 5000
 
-LABEL traefik.http.middlewares.pdfs-buffering.buffering.maxRequestBodyBytes=524288000
-LABEL traefik.http.middlewares.pdfs-buffering.buffering.memRequestBodyBytes=524288000
+LABEL traefik.http.middlewares.pdfs-buffering.buffering.maxRequestBodyBytes=1073741824
+LABEL traefik.http.middlewares.pdfs-buffering.buffering.memRequestBodyBytes=1073741824
 LABEL traefik.http.routers.pdfs.middlewares=pdfs-buffering
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

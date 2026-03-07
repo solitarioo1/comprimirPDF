@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 load_dotenv()
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
 csrf = CSRFProtect(app)
